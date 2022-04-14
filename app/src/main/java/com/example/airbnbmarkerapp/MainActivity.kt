@@ -3,11 +3,15 @@ package com.example.airbnbmarkerapp
 import android.graphics.Color
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
+import androidx.viewpager2.widget.ViewPager2
 import com.naver.maps.geometry.LatLng
 import com.naver.maps.map.*
 import com.naver.maps.map.overlay.Marker
 import com.naver.maps.map.util.FusedLocationSource
 import com.naver.maps.map.util.MarkerIcons
+import retrofit2.*
+import retrofit2.converter.gson.GsonConverterFactory
 
 class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -17,12 +21,20 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         findViewById(R.id.mapView)
     }
 
+    private val viewPager: ViewPager2 by lazy {
+        findViewById(R.id.houseViewPager)
+    }
+
+    private val viewPagerAdapter = HouseViewPagerAdapter()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         mapView.onCreate(savedInstanceState)
 
         mapView.getMapAsync(this)
+
+        viewPager.adapter = viewPagerAdapter
 
     }
 
@@ -42,11 +54,47 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
         locationSource = FusedLocationSource(this@MainActivity, LOCATION_PERMISSION_REQUEST_CODE)
         naverMap.locationSource = locationSource
 
-        val marker = Marker()
-        marker.position = LatLng(37.4797, 126.8472)
-        marker.map = naverMap
-        marker.icon = MarkerIcons.BLACK
-        marker.iconTintColor = Color.RED
+        getHouseListFromAPI()
+    }
+
+    private fun getHouseListFromAPI() {
+        val retrofit = Retrofit.Builder()
+            .baseUrl("https://run.mocky.io")
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+
+        retrofit.create(HouseService::class.java).also {
+            it.getHouseList()
+                .enqueue(object : Callback<HouseDto> {
+                    override fun onResponse(call: Call<HouseDto>, response: Response<HouseDto>) {
+                        if (response.isSuccessful.not()) {
+                            return
+                        }
+
+                        response.body()?.let { dto ->
+                            updateMarker(dto.items)
+                            viewPagerAdapter.submitList(dto.items)
+                        }
+                    }
+
+                    override fun onFailure(call: Call<HouseDto>, t: Throwable) {
+
+                    }
+
+                })
+        }
+    }
+
+    private fun updateMarker(houses: List<HouseModel>) {
+        houses.forEach { house ->
+            val marker = Marker()
+            marker.position = LatLng(house.lat, house.lng)
+            // 마커 클릭 리스너
+            marker.map = naverMap
+            marker.tag = house.id
+            marker.icon = MarkerIcons.BLACK
+            marker.iconTintColor = Color.RED
+        }
     }
 
     override fun onRequestPermissionsResult(
